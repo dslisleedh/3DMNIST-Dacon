@@ -28,6 +28,25 @@ class DropTime(tf.keras.layers.Layer):
         )
 
 
+class DropPath(tf.keras.layers.Layer):
+    def __init__(self, layer, drop_rate: float):
+        super(DropPath, self).__init__()
+        self.layer = layer
+        self.survival_prob = 1. - drop_rate
+
+    def call(self, inputs, training):
+        if training:
+            if tf.equal(
+                K.random_bernoulli(shape=(), p=self.survival_prob),
+                1.
+            ):
+                return self.layer(inputs) / self.survival_prob
+            else:
+                return inputs
+        else:
+            return self.layer(inputs)
+
+
 class MultiLayerPerceptron(tf.keras.layers.Layer):
     def __init__(
             self, act: simple_gate, expansion_rate: int = 4, **kwargs
@@ -117,10 +136,10 @@ class Block(tf.keras.layers.Layer):
         )
         self.droptime = DropTime(drop_rate[0])
         self.attentions = [
-            MultiHeadSelfAttention(n_heads) for _ in range(n_layers)
+            DropPath(MultiHeadSelfAttention(n_heads), self.drop_rate[1]) for _ in range(n_layers)
         ]
         self.mlps = [
-            MultiLayerPerceptron(act=act) for _ in range(n_layers)
+            DropPath(MultiLayerPerceptron(act=act), self.drop_rate[1]) for _ in range(n_layers)
         ]
 
     def call(self, inputs, training):
@@ -130,18 +149,12 @@ class Block(tf.keras.layers.Layer):
             features, 'b h w c -> b c (h w)'
         )
         features = self.droptime(features)
-        if training:
-            for attention, mlp in zip(self.attentions, self.mlps):
-                drop_state = tf.random.uniform(shape=(), minval=0., maxval=1.)
-                if tf.less(drop_state, self.drop_rate[1]):
-                    continue
-                res = features + attention(features)
-                res += mlp(res)
-                features = features + (res - features) / (1. - self.drop_rate[1])
-        else:
-            for attention, mlp in zip(self.attentions, self.mlps):
-                features += attention(features)
-                features += mlp(features)
+        for attention, mlp in zip(self.attentions, self.mlps):
+            drop_state = tf.random.uniform(shape=(), minval=0., maxval=1.)
+            if tf.less(drop_state, self.drop_rate[1]):
+                continue
+            res = features + attention(features)
+            res += mlp(res)
 
         features = tf.reshape(
             tf.transpose(features, (0, 2, 1)), (-1, h, w, self.n_filters)

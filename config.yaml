@@ -1,0 +1,17 @@
+load_path: ./data/
+seed: 42
+
+input_size: 32, 32, 16
+
+model:
+  n_filters: 32, 64, 128
+  n_layers: 4, 4, 8
+  strides: 2, 2, 2
+  n_labels: 10
+  drop_rate: .1, .1
+  act: simple_gate
+  n_heads: 8
+
+batch_size: 256
+learning_rate: 0.0001
+epochs: 100

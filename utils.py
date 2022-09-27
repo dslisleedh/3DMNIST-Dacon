@@ -22,16 +22,26 @@ def _rotate_pointclouds(a, b, c, dots):
 
 def dots_to_tensor_with_augmentation(
         dots: np.array,
-        bins: Sequence[int] = [32, 64, 64],  # C W H
-        blank_augmentation: bool = True
+        bins: Sequence[int] = [16, 32, 32],  # C W H
+        augmentation: bool = True
 ) -> tf.Tensor:
-    if blank_augmentation:
+
+    if augmentation:
+        h_rot, w_rot, c_rot = tf.random.truncated_normal(
+            shape=(3,), mean=0., stddev=.25
+        ).numpy()
+        dots = _rotate_pointclouds(
+            np.radians(h_rot), np.radians(w_rot), np.radians(c_rot), dots
+        )
+
         h_max, w_max, c_max = np.max(dots, axis=0)
         h_min, w_min, c_min = np.min(dots, axis=0)
         h_range, w_range, c_range = [
             max_ - min_ for max_, min_ in zip([h_max, w_max, c_max], [h_min, w_min, c_min])
         ]
-        aug_strength = np.random.uniform(0., .3, size=(6,))
+        aug_strength = tf.random.truncated_normal(
+            shape=(6,), mean=0., stddev=.25
+        ).numpy()
         h_max_aug, w_max_aug, c_max_aug, h_min_aug, w_min_aug, c_min_aug = [
             val + (range_ * aug) for val, range_, aug in zip(
                 [h_max, w_max, c_max, h_min, w_min, c_min],
@@ -49,6 +59,7 @@ def dots_to_tensor_with_augmentation(
             dots, bins=bins
         )
 
+    arr = np.clip(arr, a_min=0., a_max=1.)
     tensor_ = tf.convert_to_tensor(
         np.rot90(np.transpose(arr, (1, 2, 0)), k=1, axes=(0, 1)), dtype=tf.float32
     )
